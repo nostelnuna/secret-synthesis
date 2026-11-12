@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>시크릿 신세시스 (Secret Synthesis) : 연구소의 배신자</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800;900&display=swap');
+    body { font-family: 'Pretendard', sans-serif; user-select: none; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+  <!-- [1] 로그인 / 연구소 입장 화면 -->
+  <div id="loginScreen" class="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-5">
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-3xl shadow-lg shadow-emerald-950">
+        🧪
+      </div>
+      <div>
+        <h1 class="text-2xl font-black text-white">SECRET SYNTHESIS</h1>
+        <p class="text-xs text-emerald-400 font-bold mt-1">연구소의 배신자 (5~35인 화학 심리 추리)</p>
+        <p class="text-[11px] text-slate-400 mt-1">안정 촉매를 합성할 것인가, 독성 가스를 퍼뜨릴 것인가!</p>
+      </div>
+
+      <div class="w-full">
+        <input type="text" id="nameInput" placeholder="연구원 닉네임 입력" maxlength="12" autofocus
+          class="w-full bg-slate-950 border border-slate-700 rounded-2xl py-3.5 px-4 text-center text-white font-bold text-base focus:outline-none focus:border-emerald-500 transition">
+      </div>
+
+      <button id="joinBtn" class="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-black text-base rounded-2xl shadow-xl shadow-emerald-950 transition">
+        연구소 입장하기 ▶
+      </button>
+    </div>
+  </div>
+
+  <!-- [2] 인게임 메인 화면 -->
+  <div id="gameScreen" class="hidden flex-1 flex flex-col h-screen max-w-6xl w-full mx-auto p-2 sm:p-4 gap-2.5">
+    
+    <!-- 상단 헤더 -->
+    <header class="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-md flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center font-black text-sm text-white shadow">
+          🧪
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="headerPhaseBadge" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">대기실</span>
+            <span id="headerRoundText" class="text-xs font-bold text-white">라운드 1</span>
+          </div>
+          <span id="myProfileText" class="text-[11px] text-slate-400 font-semibold truncate block max-w-[130px] sm:max-w-none">접속 중...</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div id="hostQuickControls" class="hidden items-center gap-1">
+          <button id="quickPauseBtn" class="px-2 py-1 rounded-lg bg-amber-950/80 border border-amber-800 text-amber-300 text-xs font-bold">⏸️</button>
+          <button id="quickAdd30Btn" class="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-[11px] font-bold">+30s</button>
+        </div>
+
+        <div class="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-inner">
+          <span id="timerIcon">⏱️</span>
+          <span id="timerText" class="font-mono text-lg sm:text-xl font-black text-emerald-400">00:00</span>
+        </div>
+
+        <button id="rosterModalBtn" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700 font-bold flex items-center gap-1">
+          <span>👥</span> <span id="rosterCountText">0명</span>
+        </button>
+        <button id="hostMenuBtn" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-950 text-xs text-slate-300 hover:text-emerald-400 border border-slate-700 font-bold flex items-center gap-1">
+          <span id="hostBtnIcon">🔑</span> <span id="hostBtnText">방장 인증</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- [핵심 전광판] 플라스크 합성 현황 보드 (안정 5칸 vs 독성 6칸) -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-md grid grid-cols-1 md:grid-cols-2 gap-3">
+      <!-- 안정 촉매 트랙 (5칸) -->
+      <div class="bg-slate-950 border border-emerald-900/50 rounded-xl p-2.5 flex items-center justify-between">
+        <div>
+          <span class="text-xs font-black text-emerald-400 block">🧪 안정 촉매 (Clean)</span>
+          <span class="text-[10px] text-slate-400">5개 합성 시 연구팀 승리</span>
+        </div>
+        <div id="cleanTrack" class="flex items-center gap-1.5">
+          <!-- 5개 슬롯 -->
+        </div>
+      </div>
+
+      <!-- 독성 반응물 트랙 (6칸) -->
+      <div class="bg-slate-950 border border-rose-900/50 rounded-xl p-2.5 flex items-center justify-between">
+        <div>
+          <span class="text-xs font-black text-rose-400 block">☣️ 독성 반응물 (Toxic)</span>
+          <span class="text-[10px] text-slate-400">6개 또는 3개+수장 선출 시 스파이 승리</span>
+        </div>
+        <div id="toxicTrack" class="flex items-center gap-1.5">
+          <!-- 6개 슬롯 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 메인 컨텐츠 (좌측 채팅/로그 + 우측 비밀카드 및 실험 액션) -->
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-2.5 min-h-0 overflow-hidden">
+      
+      <!-- [좌측 2열] 실시간 연구소 토론 채팅 -->
+      <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col shadow-lg overflow-hidden min-h-0">
+        <div class="bg-slate-950 border-b border-slate-800 px-3 py-2 flex items-center justify-between text-xs">
+          <span class="font-bold text-slate-300">💬 연구소 실시간 토론 & 실험 로그</span>
+          <span id="failTrackerBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-400">연속 부결: 0 / 3</span>
+        </div>
+
+        <div id="chatMessageList" class="flex-1 p-3.5 overflow-y-auto space-y-2 text-xs no-scrollbar"></div>
+
+        <form id="chatForm" class="p-2.5 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
+          <input type="text" id="chatInput" placeholder="시약 조합과 의심 인물을 추리해 보세요... (Enter)" maxlength="150" autocomplete="off"
+            class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition">
+          <button type="submit" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow">전송</button>
+        </form>
+      </div>
+
+      <!-- [우측 1열] 비밀 신분증 & 실험 제어 패널 -->
+      <div class="flex flex-col gap-2.5 min-h-0 overflow-y-auto no-scrollbar">
+        
+        <!-- 내 비밀 신분증 (Hold to Reveal) -->
+        <div class="relative bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-4 shadow-md text-center overflow-hidden">
+          <div id="roleCover" class="absolute inset-0 bg-slate-950/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-3 transition-opacity duration-200 cursor-pointer">
+            <span class="text-3xl mb-1 animate-bounce">👆</span>
+            <p class="text-xs font-black text-emerald-400">화면을 꾹 누르고 있으면 신분 공개</p>
+            <p class="text-[10px] text-slate-500 mt-0.5">주변에 보이지 않게 확인하세요</p>
+          </div>
+
+          <div>
+            <div id="roleIcon" class="text-4xl mb-1">🧪</div>
+            <h3 id="roleName" class="text-lg font-black text-white">신분 대기 중</h3>
+            <p id="roleTeam" class="text-xs font-bold text-slate-400 mb-1.5">연구 시작 시 배정됩니다</p>
+            <p id="roleDesc" class="text-[11px] text-slate-300 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 leading-relaxed">
+              방장이 게임을 시작할 때까지 대기해 주세요.
+            </p>
+            <div id="alliesBox" class="mt-2.5 p-2 bg-rose-950/40 border border-rose-900/60 rounded-xl text-left hidden">
+              <span class="text-[11px] font-black text-rose-300 block mb-0.5">☣️ 확인된 스파이 동료:</span>
+              <p id="alliesList" class="text-[11px] text-rose-200 font-bold"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 실험 인터랙션 패널 -->
+        <div id="actionCard" class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-center min-h-[220px]">
+          <div class="text-center py-4 text-slate-400 text-xs">
+            방장이 연구를 시작하면 실험 지명 및 시약 선택창이 나타납니다.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- [3] 방장 관리자 모달 -->
+  <div id="hostModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl flex flex-col gap-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-black text-white">👑 방장 관리자 메뉴</h3>
+        <button id="closeHostModalBtn" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <div id="hostPinSection">
+        <p class="text-xs text-slate-400 mb-2">방장 권한을 획득하려면 관리자 비밀번호를 입력하세요.</p>
+        <div class="flex gap-2">
+          <input type="password" id="hostPinInput" placeholder="비밀번호 입력" maxlength="4"
+            class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-center text-white font-mono text-sm">
+          <button id="submitHostPinBtn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl">인증</button>
+        </div>
+      </div>
+
+      <div id="hostControlsSection" class="hidden flex flex-col gap-3">
+        <div class="p-3 bg-slate-950 rounded-2xl border border-slate-800">
+          <span class="text-xs font-bold text-white block mb-1.5">🎭 방장 역할 선택</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="modePlayerBtn" class="py-2 px-2 rounded-xl text-xs font-bold border border-emerald-600 bg-emerald-600 text-white">🎮 참가자 모드</button>
+            <button id="modeModeratorBtn" class="py-2 px-2 rounded-xl text-xs font-bold border border-slate-800 bg-slate-900 text-slate-400">🎙️ 사회자 모드</button>
+          </div>
+        </div>
+
+        <button id="hostStartGameBtn" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-sm rounded-xl shadow-lg">
+          🧪 연구(게임) 시작
+        </button>
+        <button id="hostResetGameBtn" class="w-full py-2.5 bg-slate-800 text-slate-200 font-bold text-xs rounded-xl border border-slate-700">
+          🔄 다음 판 준비 (참가자 유지)
+        </button>
+        <button id="hostKickAllBtn" class="w-full py-2 bg-rose-950/60 text-rose-300 font-bold text-xs rounded-xl border border-rose-800">
+          ⚠️ 방 완전 초기화 (전원 퇴장)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 참가자 명단 모달 -->
+  <div id="rosterModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 max-h-[80vh]">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-black text-white">👥 연구원 명단 (<span id="modalPlayerCount">0명</span>)</h3>
+        <button id="closeRosterModalBtn" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+      <div id="modalPlayerList" class="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar text-xs"></div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let myPlayer = null;
+    let mySecretRole = null;
+    let currentState = null;
+    let isHostAuthed = false;
+    let isModeratorMode = false;
+
+    // 1. 로그인 & 세션 복구
+    let storedToken = localStorage.getItem('synthesis_token');
+    let storedName = localStorage.getItem('synthesis_name');
+    if (storedToken && storedName) {
+      document.getElementById('nameInput').value = storedName;
+      socket.emit('player:join', { name: storedName, token: storedToken });
+    }
+
+    document.getElementById('joinBtn').onclick = () => {
+      const name = document.getElementById('nameInput').value.trim();
+      if (!name) return alert('닉네임을 입력해 주세요!');
+      localStorage.setItem('synthesis_name', name);
+      socket.emit('player:join', { name, token: storedToken });
+    };
+
+    socket.on('player:joined_success', (p) => {
+      myPlayer = p;
+      if (p.token) {
+        localStorage.setItem('synthesis_token', p.token);
+        storedToken = p.token;
+      }
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('gameScreen').classList.remove('hidden');
+      updateProfileUI();
+    });
+
+    socket.on('error_message', (msg) => alert(msg));
+    socket.on('power:result', (res) => alert(`[${res.title}]\n${res.message}`));
+
+    function updateProfileUI() {
+      if (!myPlayer) return;
+      const tag = isHostAuthed ? (isModeratorMode ? ' [사회자 🎙️]' : ' [방장 👑]') : '';
+      document.getElementById('myProfileText').textContent = `${myPlayer.name}${tag}`;
+      if (isHostAuthed) {
+        document.getElementById('hostBtnIcon').textContent = '👑';
+        document.getElementById('hostBtnText').textContent = '방장 메뉴';
+        document.getElementById('hostPinSection').classList.add('hidden');
+        document.getElementById('hostControlsSection').classList.remove('hidden');
+        document.getElementById('hostQuickControls').classList.remove('hidden');
+        document.getElementById('hostQuickControls').classList.add('flex');
+      }
+    }
+
+    // 2. 방장 인증 & 역할
+    document.getElementById('submitHostPinBtn').onclick = () => {
+      socket.emit('host:claim', { pin: document.getElementById('hostPinInput').value.trim() });
+    };
+    socket.on('host:verified', (data) => {
+      isHostAuthed = true;
+      isModeratorMode = !!data.isModerator;
+      updateProfileUI();
+      alert('방장 권한이 승인되었습니다!');
+    });
+
+    document.getElementById('modePlayerBtn').onclick = () => {
+      isModeratorMode = false;
+      document.getElementById('modePlayerBtn').className = 'py-2 px-2 rounded-xl text-xs font-bold border border-emerald-600 bg-emerald-600 text-white';
+      document.getElementById('modeModeratorBtn').className = 'py-2 px-2 rounded-xl text-xs font-bold border border-slate-800 bg-slate-900 text-slate-400';
+      socket.emit('host:set_mode', { isModerator: false });
+      updateProfileUI();
+    };
+    document.getElementById('modeModeratorBtn').onclick = () => {
+      isModeratorMode = true;
+      document.getElementById('modeModeratorBtn').className = 'py-2 px-2 rounded-xl text-xs font-bold border border-amber-500 bg-amber-950 text-amber-300';
+      document.getElementById('modePlayerBtn').className = 'py-2 px-2 rounded-xl text-xs font-bold border border-slate-800 bg-slate-900 text-slate-400';
+      socket.emit('host:set_mode', { isModerator: true });
+      updateProfileUI();
+    };
+
+    document.getElementById('quickPauseBtn').onclick = () => socket.emit('timer:toggle');
+    document.getElementById('quickAdd30Btn').onclick = () => socket.emit('timer:add', { seconds: 30 });
+
+    // 3. 비밀 신분 수신
+    socket.on('secret_role', (r) => {
+      mySecretRole = r;
+      document.getElementById('roleIcon').textContent = r.icon;
+      document.getElementById('roleName').textContent = r.roleName;
+      document.getElementById('roleTeam').textContent = r.team === 'CLEAN' ? '🧪 수석 연구팀' : (r.team === 'SPECTATOR' ? '🎙️ 진행 사회자' : '☣️ 산업 스파이 진영');
+      document.getElementById('roleTeam').className = `text-xs font-bold mb-1.5 ${r.team === 'CLEAN' ? 'text-emerald-400' : (r.team === 'SPECTATOR' ? 'text-amber-400' : 'text-rose-400')}`;
+      document.getElementById('roleDesc').textContent = r.desc;
+
+      if (r.knownAllies && r.knownAllies.length > 0) {
+        document.getElementById('alliesBox').classList.remove('hidden');
+        document.getElementById('alliesList').textContent = r.knownAllies.join(', ');
+      } else {
+        document.getElementById('alliesBox').classList.add('hidden');
+      }
+    });
+
+    const cover = document.getElementById('roleCover');
+    const showRole = (e) => { e.preventDefault(); cover.style.opacity = '0'; cover.style.pointerEvents = 'none'; };
+    const hideRole = () => { cover.style.opacity = '1'; cover.style.pointerEvents = 'auto'; };
+    cover.addEventListener('mousedown', showRole);
+    window.addEventListener('mouseup', hideRole);
+    cover.addEventListener('touchstart', showRole);
+    window.addEventListener('touchend', hideRole);
+
+    // 4. 채팅
+    const chatList = document.getElementById('chatMessageList');
+    document.getElementById('chatForm').onsubmit = (e) => {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      if (!input.value.trim()) return;
+      socket.emit('chat:send', { text: input.value.trim() });
+      input.value = '';
+    };
+
+    socket.on('chat:message', (msg) => {
+      const el = document.createElement('div');
+      if (msg.isSystem) {
+        el.className = 'py-1.5 px-3 rounded-xl bg-slate-950/90 border border-slate-800 text-center text-emerald-300 font-bold my-1 text-[11px]';
+        el.textContent = msg.text;
+      } else {
+        const isMe = myPlayer && msg.sender.includes(myPlayer.name);
+        el.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} my-1`;
+        el.innerHTML = `
+          <div class="flex items-center gap-1.5 mb-0.5">
+            <span class="text-[10px] font-bold text-slate-400">${msg.sender}</span>
+            <span class="text-[9px] text-slate-600">${msg.time}</span>
+          </div>
+          <div class="px-3 py-2 rounded-2xl max-w-[85%] break-words ${isMe ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-100 rounded-tl-none'}">
+            ${msg.text}
+          </div>
+        `;
+      }
+      chatList.appendChild(el);
+      chatList.scrollTop = chatList.scrollHeight;
+    });
+
+    // 5. 타이머 및 상태 렌더링
+    socket.on('timer:tick', (data) => {
+      const m = String(Math.floor(data.seconds / 60)).padStart(2, '0');
+      const s = String(data.seconds % 60).padStart(2, '0');
+      document.getElementById('timerText').textContent = `${m}:${s}`;
+      document.getElementById('timerIcon').textContent = data.isPaused ? '⏸️' : '⏱️';
+      document.getElementById('quickPauseBtn').textContent = data.isPaused ? '▶️' : '⏸️';
+    });
+
+    socket.on('state:update', (state) => {
+      currentState = state;
+      renderAll(state);
+    });
+
+    // 책임자 시약 3장 수신
+    socket.on('director:cards', (cards) => {
+      const box = document.getElementById('actionCard');
+      box.innerHTML = `
+        <div class="flex flex-col gap-2">
+          <span class="text-xs font-black text-emerald-400">🔬 시약 3장 검토 (버릴 1장을 선택하세요!)</span>
+          <p class="text-[10px] text-slate-400">선택한 1장은 폐기되고, 나머지 2장이 실험담당자에게 전달됩니다.</p>
+          <div class="grid grid-cols-3 gap-2 mt-1">
+            ${cards.map((c, idx) => `
+              <button onclick="discardCard(${idx})" class="py-4 px-2 rounded-xl border font-bold text-xs transition ${c === 'CLEAN' ? 'bg-emerald-950/60 border-emerald-600 text-emerald-300 hover:bg-emerald-800' : 'bg-rose-950/60 border-rose-600 text-rose-300 hover:bg-rose-800'}">
+                <span class="text-2xl block mb-1">${c === 'CLEAN' ? '🧪' : '☠️'}</span>
+                ${c === 'CLEAN' ? '안정 촉매' : '독성 반응'}<br>
+                <span class="text-[9px] opacity-80">(클릭해 폐기)</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    });
+
+    window.discardCard = (idx) => {
+      socket.emit('director:discard_card', { discardIndex: idx });
+      document.getElementById('actionCard').innerHTML = `<div class="text-center py-4 text-xs text-slate-300">남은 2장의 시약을 실험담당자에게 전달했습니다...</div>`;
+    };
+
+    // 실험담당자 시약 2장 수신
+    socket.on('lead:cards', (cards) => {
+      const box = document.getElementById('actionCard');
+      box.innerHTML = `
+        <div class="flex flex-col gap-2">
+          <span class="text-xs font-black text-amber-400">⚗️ 플라스크 투입 (최종 1장을 선택하세요!)</span>
+          <p class="text-[10px] text-slate-400">선택한 시약이 즉시 플라스크에 합성됩니다.</p>
+          <div class="grid grid-cols-2 gap-3 mt-1">
+            ${cards.map((c, idx) => `
+              <button onclick="playCard(${idx})" class="py-5 px-2 rounded-xl border font-bold text-xs transition ${c === 'CLEAN' ? 'bg-emerald-950/60 border-emerald-600 text-emerald-300 hover:bg-emerald-800' : 'bg-rose-950/60 border-rose-600 text-rose-300 hover:bg-rose-800'}">
+                <span class="text-3xl block mb-1">${c === 'CLEAN' ? '🧪' : '☠️'}</span>
+                ${c === 'CLEAN' ? '안정 촉매 투입' : '독성 반응물 투입'}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    });
+
+    window.playCard = (idx) => {
+      socket.emit('lead:play_card', { playIndex: idx });
+    };
+
+    function renderAll(state) {
+      document.getElementById('headerRoundText').textContent = `라운드 ${state.round}`;
+      document.getElementById('rosterCountText').textContent = `${state.playerCount}명`;
+      document.getElementById('modalPlayerCount').textContent = `${state.playerCount}명`;
+      document.getElementById('failTrackerBadge').textContent = `연속 부결: ${state.failTracker} / 3`;
+
+      // 트랙 렌더링
+      let cleanHtml = '';
+      for (let i = 0; i < 5; i++) {
+        cleanHtml += `<div class="w-7 h-9 rounded-lg border flex items-center justify-center text-sm ${i < state.cleanCount ? 'bg-emerald-600 border-emerald-400 text-white shadow' : 'bg-slate-900 border-slate-800 text-slate-700'}">${i < state.cleanCount ? '🧪' : (i + 1)}</div>`;
+      }
+      document.getElementById('cleanTrack').innerHTML = cleanHtml;
+
+      let toxicHtml = '';
+      for (let i = 0; i < 6; i++) {
+        const powerLabel = i === 0 || i === 1 ? '감식' : (i === 2 ? '인사' : (i === 3 || i === 4 ? '격리' : '끝'));
+        toxicHtml += `<div class="w-7 h-9 rounded-lg border flex flex-col items-center justify-center text-[9px] font-bold ${i < state.toxicCount ? 'bg-rose-600 border-rose-400 text-white shadow' : 'bg-slate-900 border-slate-800 text-slate-600'}">${i < state.toxicCount ? '<span class="text-sm">☣️</span>' : powerLabel}</div>`;
+      }
+      document.getElementById('toxicTrack').innerHTML = toxicHtml;
+
+      const me = myPlayer ? state.players.find(p => p.id === myPlayer.id) : null;
+      const isAlive = me ? me.isAlive : true;
+      const isMod = me ? me.isModerator : false;
+      const isDirector = state.director && myPlayer && state.director.id === myPlayer.id;
+      const box = document.getElementById('actionCard');
+      const badge = document.getElementById('headerPhaseBadge');
+
+      if (!isAlive && !isMod) {
+        badge.textContent = '격리(탈락)';
+        box.innerHTML = `<div class="text-center py-4 text-slate-400 text-xs">💉 당신은 연구소에서 격리되었습니다. 결과를 관전해 주세요.</div>`;
+      } else if (state.phase === 'LOBBY') {
+        badge.textContent = '대기실';
+        box.innerHTML = `<div class="text-center py-4 text-slate-300 text-xs">현재 ${state.playingCount}명 참여 중 (최소 5명 이상 시작 가능)</div>`;
+      } else if (state.phase === 'NOMINATE_LEAD') {
+        badge.textContent = '실험담당자 지명';
+        if (isDirector) {
+          const candidates = state.players.filter(p => p.isAlive && !p.isModerator && p.id !== myPlayer.id && p.id !== state.lastLeadId);
+          box.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <span class="text-xs font-black text-emerald-400">👑 당신은 이번 라운드 연구책임자입니다!</span>
+              <select id="leadSelect" class="w-full bg-slate-950 text-white rounded-xl p-2.5 border border-slate-700 text-xs">
+                ${candidates.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              </select>
+              <button id="nominateLeadBtn" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl">실험담당자로 지명하기</button>
+            </div>
+          `;
+          document.getElementById('nominateLeadBtn').onclick = () => {
+            socket.emit('director:nominate_lead', { leadId: document.getElementById('leadSelect').value });
+          };
+        } else {
+          box.innerHTML = `<div class="text-center py-4 text-xs text-slate-300">연구책임자 <strong>[${state.director?.name}]</strong> 님이 실험담당자를 고르고 있습니다...</div>`;
+        }
+      } else if (state.phase === 'VOTE_TEAM') {
+        badge.textContent = '신임 찬반 투표';
+        if (isMod) {
+          box.innerHTML = `<div class="text-center py-4 text-xs text-amber-300">사회자: 신임 투표 집계 중 (${state.voteCount}명 투표)</div>`;
+        } else {
+          box.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <span class="text-xs font-bold text-center text-white">책임자 [${state.director?.name}] + 담당자 [${state.lead?.name}] 조합을 승인할까요?</span>
+              <div class="grid grid-cols-2 gap-2 mt-1">
+                <button id="voteYesBtn" class="py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl">⭕ 찬성 (승인)</button>
+                <button id="voteNoBtn" class="py-3.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl">❌ 반대 (부결)</button>
+              </div>
+            </div>
+          `;
+          document.getElementById('voteYesBtn').onclick = () => {
+            socket.emit('player:vote_team', { vote: 'YES' });
+            box.innerHTML = `<div class="text-center py-4 text-emerald-400 font-bold text-xs">⭕ 찬성표를 던졌습니다.</div>`;
+          };
+          document.getElementById('voteNoBtn').onclick = () => {
+            socket.emit('player:vote_team', { vote: 'NO' });
+            box.innerHTML = `<div class="text-center py-4 text-rose-400 font-bold text-xs">❌ 반대표를 던졌습니다.</div>`;
+          };
+        }
+      } else if (state.phase === 'DIRECTOR_DRAW') {
+        badge.textContent = '시약 검토 중';
+        if (!isDirector) {
+          box.innerHTML = `<div class="text-center py-4 text-xs text-slate-300">연구책임자 [${state.director?.name}] 님이 시약 3장을 검토 중입니다...</div>`;
+        }
+      } else if (state.phase === 'LEAD_PLAY') {
+        badge.textContent = '플라스크 투입 중';
+        if (state.lead?.id !== myPlayer?.id) {
+          box.innerHTML = `<div class="text-center py-4 text-xs text-slate-300">실험담당자 [${state.lead?.name}] 님이 최종 1장을 투입 중입니다...</div>`;
+        }
+      } else if (state.phase === 'POWER_INVESTIGATE' || state.phase === 'POWER_SPECIAL_ELECTION' || state.phase === 'POWER_EXECUTE') {
+        badge.textContent = '특수 분석 발동';
+        if (isDirector) {
+          const targets = state.players.filter(p => p.isAlive && !p.isModerator && p.id !== myPlayer.id);
+          const powerText = state.phase === 'POWER_INVESTIGATE' ? '🧬 진영 감식할 대상 선택' : (state.phase === 'POWER_SPECIAL_ELECTION' ? '🔬 차기 연구책임자 임명' : '💉 강제 격리(탈락)할 대상 선택');
+          const evtName = state.phase === 'POWER_INVESTIGATE' ? 'power:investigate' : (state.phase === 'POWER_SPECIAL_ELECTION' ? 'power:special_election' : 'power:execute');
+
+          box.innerHTML = `
+            <div class="flex flex-col gap-2">
+              <span class="text-xs font-black text-rose-400">${powerText}</span>
+              <select id="powerTargetSelect" class="w-full bg-slate-950 text-white rounded-xl p-2.5 border border-slate-700 text-xs">
+                ${targets.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+              </select>
+              <button id="powerSubmitBtn" class="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl">특수 능력 실행</button>
+            </div>
+          `;
+          document.getElementById('powerSubmitBtn').onclick = () => {
+            socket.emit(evtName, { targetId: document.getElementById('powerTargetSelect').value });
+          };
+        } else {
+          box.innerHTML = `<div class="text-center py-4 text-xs text-rose-300 font-bold">연구책임자 [${state.director?.name}] 님이 특수 능력을 사용 중입니다...</div>`;
+        }
+      } else if (state.phase === 'GAME_OVER') {
+        badge.textContent = '연구 종료';
+        box.innerHTML = `
+          <div class="text-center py-3">
+            <span class="text-4xl block mb-1">${state.winner === 'CLEAN' ? '🧪' : '☣️'}</span>
+            <h4 class="text-sm font-black ${state.winner === 'CLEAN' ? 'text-emerald-400' : 'text-rose-400'}">${state.winReason}</h4>
+          </div>
+        `;
+      }
+
+      // 명단 모달 업데이트
+      document.getElementById('modalPlayerList').innerHTML = state.players.map(p => `
+        <div class="p-2.5 rounded-xl border flex items-center justify-between ${p.isAlive ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/40 border-slate-900 opacity-40'}">
+          <span class="font-bold text-white text-xs">${p.name} ${p.isModerator ? '🎙️' : (p.isHost ? '👑' : '')}</span>
+          <span class="text-[10px] font-bold ${state.phase === 'GAME_OVER' && p.role ? (p.role === 'RESEARCHER' ? 'text-emerald-400' : 'text-rose-400') : 'text-slate-400'}">
+            ${state.phase === 'GAME_OVER' && p.role ? p.role : (p.isAlive ? '활동 중' : '격리됨')}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    socket.on('synthesis:player_reset', () => {
+      mySecretRole = null;
+      document.getElementById('roleIcon').textContent = '🧪';
+      document.getElementById('roleName').textContent = '신분 대기 중';
+      document.getElementById('roleTeam').textContent = '연구 시작 시 배정됩니다';
+      document.getElementById('roleDesc').textContent = '방장이 게임을 시작할 때까지 대기해 주세요.';
+      document.getElementById('alliesBox').classList.add('hidden');
+      cover.style.opacity = '1';
+      cover.style.pointerEvents = 'auto';
+    });
+
+    socket.on('synthesis:force_kick', () => {
+      localStorage.removeItem('synthesis_token');
+      localStorage.removeItem('synthesis_name');
+      alert('방이 초기화되어 퇴장되었습니다.');
+      window.location.reload();
+    });
+
+    const hostModal = document.getElementById('hostModal');
+    document.getElementById('hostMenuBtn').onclick = () => hostModal.classList.remove('hidden');
+    document.getElementById('closeHostModalBtn').onclick = () => hostModal.classList.add('hidden');
+    document.getElementById('hostStartGameBtn').onclick = () => { socket.emit('host:start_game'); hostModal.classList.add('hidden'); };
+    document.getElementById('hostResetGameBtn').onclick = () => { socket.emit('host:reset_game'); hostModal.classList.add('hidden'); };
+    document.getElementById('hostKickAllBtn').onclick = () => {
+      if (confirm('모든 참가자를 퇴장시키고 방을 초기화하시겠습니까?')) {
+        socket.emit('host:kick_all');
+        hostModal.classList.add('hidden');
+      }
+    };
+
+    const rosterModal = document.getElementById('rosterModal');
+    document.getElementById('rosterModalBtn').onclick = () => rosterModal.classList.remove('hidden');
+    document.getElementById('closeRosterModalBtn').onclick = () => rosterModal.classList.add('hidden');
+  </script>
+</body>
+</html>
